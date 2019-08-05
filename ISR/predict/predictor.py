@@ -1,11 +1,38 @@
+import argparse
 import imageio
 import yaml
 import numpy as np
 from pathlib import Path
 from time import time
+from ISR.model import RDN
 from ISR.utils.logger import get_logger
 from ISR.utils.utils import get_timestamp
 from ISR.utils.image_processing import process_array, process_output
+from ISR.utils.image_processing import split_image_into_overlapping_patches, stich_together
+
+parser = argparse.ArgumentParser(
+    description='Resize a given image',
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+parser.add_argument('--input', metavar='PATH', type=str, required=True, help='Input file or directory')
+parser.add_argument('--output', metavar='PATH', type=str, default="data/output", help='Output directory')
+parser.add_argument('--model_name', metavar='MODEL', type=str, default='weights/rdn-C6-D20-G64-G064-x2_ArtefactCancelling_epoch219.hdf5', help='Pretrained model name')
+
+parser.add_argument('--batch_size', metavar='BATCH', type=int, default=10, help='Batch size')
+parser.add_argument('--patch_size', metavar='PATCH', type=int, default=0, help='Patch size')
+
+parser.add_argument('--verbose', metavar='PATCH', type=bool, default=TRUE, help='Verbosity')
+
+def main():
+    args = parser.parse_args()
+    pred = Predictor(args.input, args.output, args.verbose)
+    if args.model_name == "weights/rdn-C6-D20-G64-G064-x2_ArtefactCancelling_epoch219.hdf5":
+        rdn = RDN(arch_params={'C': 6, 'D':20, 'G':64, 'G0':64, 'x':2})
+    else:
+        self.logger.error("Model {} does not exist!".format(args.model_name))
+        raise ValueError("Model {} does not exist!".format(args.model_name))
+    
+    pred.get_predictions(model=rdn, weights_path=args.model_name)
 
 
 class Predictor:
@@ -105,7 +132,7 @@ class Predictor:
         lr_img = imageio.imread(file_path)
         if lr_img.shape[2] == 3:
             if lr_img.size[1] > 1024:
-                sr_img = self._predict(model,lr_img,64)
+                sr_img = self._predict(model,lr_img,256)
             else:
                 sr_img = self._predict(model,lr_img)
             return sr_img
@@ -144,6 +171,18 @@ class Predictor:
                     collect = batch
                 else:
                     collect = np.append(collect, batch, axis=0)
+                    
+                scale = model.scale
+                padded_size_scaled = tuple(np.multiply(p_shape[0:2], scale)) + (3,)
+                scaled_image_shape = tuple(np.multiply(input_image_array.shape[0:2], scale)) + (3,)
+                sr_img = stich_together(
+                    collect,
+                    padded_image_shape=padded_size_scaled,
+                    target_shape=scaled_image_shape,
+                    padding_size=padding_size * scale,
+                )
+                sr_img
+                process_output(sr_img)
 
             scale = model.scale
             padded_size_scaled = tuple(np.multiply(p_shape[0:2], scale)) + (3,)
